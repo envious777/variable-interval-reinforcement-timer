@@ -80,3 +80,12 @@ This app is built using:
 ## Sound Credits
 
 The app uses school-friendly alert sounds stored in the assets directory.
+
+## TODO
+* Find and update mp3 files for sound types other than 'bell'
+* Fix bug where subsequent interval durations after the first or second do not respect the min/max. Also starts occurring when the question is answered.
+* Redo list view
+  * Clicking on session takes you to a new page that has each interval displayed clearly - and give ability to export in new page
+  * Session view should allow bulk exporting by selecting sessions
+* Different colors for Average, minimum, and maximum so that it is a little clearer to use.
+* Look into improving the look and feel of the UI
