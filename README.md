@@ -1,0 +1,82 @@
+# Variable Interval Timer App
+
+A mobile application that sets random timers between minimum and maximum durations, varying around an average duration.
+
+## Features
+
+- Set variable interval timers based on average, minimum, and maximum durations
+- Dark mode and light mode support
+- Background operation (continues to work when the app is closed or phone is sleeping)
+- Friendly audio alerts suitable for classroom environments
+- Persistence of settings using local storage
+
+## Usage
+
+1. Set your desired average duration (in hours/minutes/seconds)
+2. Set minimum duration (in hours/minutes/seconds)
+3. Set maximum duration (in hours/minutes/seconds)
+4. Press "Start Timer" to begin
+5. The app will automatically set random timers that average out to your specified average duration
+6. Audio cues will play when each timer completes
+7. Press "Stop Timer" to end the timer sequence
+
+## Technical Details
+
+This app is built using:
+- React Native
+- Expo
+- AsyncStorage for persistence
+- Expo Audio for sound playback
+- Expo Notifications for alerts
+- Expo Background Fetch for background operation
+
+## Installation
+
+### Development
+
+1. Clone the repository
+2. Install dependencies:
+   ```
+   npm install
+   ```
+3. Start the development server:
+   ```
+   npx expo start
+   ```
+
+### Production Build
+
+1. Install EAS CLI:
+   ```
+   npm install -g eas-cli
+   ```
+2. Configure EAS build:
+   ```
+   eas build:configure
+   ```
+3. Build for Android:
+   ```
+   eas build -p android
+   ```
+4. Build for iOS:
+   ```
+   eas build -p ios
+   ```
+
+## Requirements
+
+- Node.js 14 or higher
+- Expo CLI
+- Android Studio (for Android development)
+- Xcode (for iOS development, macOS only)
+
+## Notes on Background Operation
+
+- iOS and Android handle background tasks differently
+- On iOS, background fetch is limited to periodic checks (minimum interval is 15 minutes in production)
+- On Android, the app uses foreground services and boot receivers to ensure timer operation
+- Notifications are used to ensure the user is alerted even when the app is in the background
+
+## Sound Credits
+
+The app uses school-friendly alert sounds stored in the assets directory.
