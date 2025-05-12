@@ -1,33 +1,38 @@
+import { colors } from '@/constants/theme';
+import { useThemeColor } from '@/hooks/useThemeColor';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 type RootStackParamList = {
-  Home: undefined;
-  RecordSession: undefined;
-  ViewSessions: undefined;
+  home: undefined;
+  record: undefined;
+  view: undefined;
 };
 
-type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
+type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'home'>;
 
 const HomeScreen = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
+  const backgroundColor = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const buttonColor = useThemeColor({}, 'primary');
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Variable Interval Reinforcement Timer</Text>
+    <View style={[styles.container, { backgroundColor }]}>
+      <Text style={[styles.title, { color: textColor }]}>Variable Interval Reinforcement Timer</Text>
       <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate('RecordSession')}
+        style={[styles.button, { backgroundColor: buttonColor }]}
+        onPress={() => navigation.navigate('record')}
       >
-        <Text style={styles.buttonText}>Record Session</Text>
+        <Text style={[styles.buttonText, { color: backgroundColor }]}>Record Session</Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate('ViewSessions')}
+        style={[styles.button, { backgroundColor: buttonColor }]}
+        onPress={() => navigation.navigate('view')}
       >
-        <Text style={styles.buttonText}>View Sessions</Text>
+        <Text style={[styles.buttonText, { color: backgroundColor }]}>View Sessions</Text>
       </TouchableOpacity>
     </View>
   );
@@ -38,7 +43,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
   },
   title: {
     fontSize: 24,
@@ -57,7 +62,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonText: {
-    color: '#fff',
+    color: colors.white,
     fontSize: 18,
     fontWeight: 'bold',
   },

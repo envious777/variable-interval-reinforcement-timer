@@ -1,0 +1,187 @@
+import { exportCsvWeb, formatAnswerForCsv, isNullOrUndefined } from '@/common/module';
+import { Answer } from '@/common/types';
+import { colors } from '@/constants/theme';
+import { useThemeColor } from '@/hooks/useThemeColor';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { RouteProp, useRoute } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system';
+import React from 'react';
+import { FlatList, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { IntervalRecord } from './RecordSession';
+
+interface Session {
+  id: number;
+  startedAt: number;
+  intervals: IntervalRecord[];
+}
+
+type SessionDetailRouteProp = RouteProp<any, any>;
+
+const SessionDetail = () => {
+  const route = useRoute<SessionDetailRouteProp>();
+  const { sessionId } = route.params as { sessionId: number };
+  const [session, setSession] = React.useState<Session | null>(null);
+  const backgroundColor = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const cardColor = useThemeColor({}, 'card');
+  const primaryColor = useThemeColor({}, 'primary');
+
+  React.useEffect(() => {
+    const loadSession = async () => {
+      const sessionsRaw = await AsyncStorage.getItem('sessions');
+      if (sessionsRaw) {
+        const sessions: Session[] = JSON.parse(sessionsRaw);
+        const found = sessions.find(s => s.id === sessionId);
+        setSession(found || null);
+      }
+    };
+    loadSession();
+  }, [sessionId]);
+
+  if (!session) {
+    return <View style={[styles.container, { backgroundColor }]}><Text style={{ color: textColor }}>Loading...</Text></View>;
+  }
+
+  // Export intervals to CSV
+  const exportToCSV = async () => {
+    if (!session) {
+        return;
+    }
+
+    let csv = 'Interval Index,Interval Start,Interval Duration,Earned Token(s)?\n';
+    session.intervals.forEach(interval => {
+      const intervalStart = new Date(interval.start).toString();
+      const intervalDuration = Math.round(interval.duration / 1000) + 's';
+      const answer = formatAnswerForCsv(interval.answer);
+      csv += `${interval.index + 1},${intervalStart},${intervalDuration},${answer}\n`;
+    });
+
+    const sessionStartedAt = new Date(session.startedAt).toLocaleString();
+    const sessionStartedAtFormatted = sessionStartedAt.replace(/[:/]/g, '-').replace(/ /g, '_');
+    const csvFileName = `session_${sessionStartedAtFormatted}.csv`;
+
+    if (Platform.OS === 'web') {
+      exportCsvWeb(csv, csvFileName);
+      return;
+    }
+
+    try {
+      const fileUri = FileSystem.cacheDirectory + csvFileName;
+      await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+      await Share.share({ url: fileUri, message: 'Session Intervals CSV', title: 'Exported Session' });
+    } catch (e) {
+      alert('Failed to export CSV: ' + e);
+    }
+  };
+
+  // Save answer for an interval
+  const saveAnswer = async (intervalIdx: number, answer: 'yes' | 'no' | 'missed') => {
+    if (!session) {
+        return;
+    }
+
+    const storedAnswer: Answer = answer === 'missed' ? 'missed' : answer;
+    const updatedIntervals = session.intervals.map((interval, idx) =>
+      idx === intervalIdx ? { ...interval, answer: storedAnswer } : interval
+    );
+    const updatedSession = { ...session, intervals: updatedIntervals };
+    setSession(updatedSession);
+
+    // Update AsyncStorage
+    const sessionsRaw = await AsyncStorage.getItem('sessions');
+    if (sessionsRaw) {
+      const sessions: Session[] = JSON.parse(sessionsRaw);
+      const sessionIdx = sessions.findIndex(s => s.id === session.id);
+      if (sessionIdx !== -1) {
+        sessions[sessionIdx] = updatedSession;
+        await AsyncStorage.setItem('sessions', JSON.stringify(sessions));
+      }
+    }
+  };
+
+  // Sort intervals ascending by index
+  const sortedIntervals = [...session.intervals].sort((a, b) => a.index - b.index);
+
+  return (
+    <View style={[styles.container, { backgroundColor }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Text style={[styles.title, { color: textColor }]}>Session Details</Text>
+        <TouchableOpacity onPress={exportToCSV} style={{ backgroundColor: primaryColor, padding: 8, borderRadius: 8, marginLeft: 8 }}>
+          <Text style={{ color: textColor, fontWeight: 'bold' }}>Export CSV</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={[styles.sessionSubtitle, { color: textColor }]}>Date: {new Date(session.startedAt).toLocaleString()}</Text>
+      <FlatList
+        data={sortedIntervals}
+        keyExtractor={item => item.index.toString()}
+        renderItem={({ item }) => (
+          <View style={[styles.intervalCard, { backgroundColor: cardColor, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+            <View>
+              <Text style={[styles.intervalText, { color: textColor }]}>Interval #{item.index + 1}</Text>
+              <Text style={[styles.intervalText, { color: textColor }]}>Start: {new Date(item.start).toLocaleTimeString()}</Text>
+              <Text style={[styles.intervalText, { color: textColor }]}>Duration: {Math.round(item.duration / 1000)}s</Text>
+            </View>
+            {isNullOrUndefined(item.answer) ? (
+              <View style={{ flexDirection: 'row', marginLeft: 8, marginTop: 4 }}>
+                <TouchableOpacity onPress={() => saveAnswer(item.index, 'yes')} style={[styles.answerBtn, { backgroundColor: colors.success }]}>
+                  <Text style={styles.answerBtnText}>✔</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => saveAnswer(item.index, 'no')} style={[styles.answerBtn, { backgroundColor: colors.destructive, marginLeft: 8 }]}>
+                  <Text style={styles.answerBtnText}>✘</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => saveAnswer(item.index, 'missed')} style={[styles.answerBtn, { backgroundColor: '#FFD700', marginLeft: 8 }]}>
+                  <Text style={[styles.answerBtnText, { color: colors.black }]}>😬 (Missed it!)</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={[styles.intervalText, { color: item.answer === 'yes' ? colors.success : item.answer === 'no' ? colors.destructive : '#FFD700', fontWeight: 'bold', marginLeft: 8 }]}>Earned Token(s)? {item.answer === 'yes' ? '✔' : item.answer === 'no' ? '✘' : '😬 (Missed it!)'}</Text>
+            )}
+          </View>
+        )}
+      />
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: colors.white,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  sessionSubtitle: {
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  intervalCard: {
+    backgroundColor: '#f2f2f7',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  intervalText: {
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  answerBtn: {
+    padding: 8,
+    borderRadius: 8,
+  },
+  answerBtnText: {
+    color: colors.white,
+    fontWeight: 'bold',
+  },
+});
+
+export default SessionDetail;

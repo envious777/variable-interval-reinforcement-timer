@@ -1,6 +1,10 @@
+import { Answer, SoundType } from '@/common/types';
+import { BACKGROUND_TASK_IDENTIFIER } from '@/constants/constants';
+import { useThemeColor } from '@/hooks/useThemeColor';
+import useUnmount from '@/hooks/useUnmount';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
-import { Audio } from 'expo-av';
+import { AudioPlayer, createAudioPlayer, PLAYBACK_STATUS_UPDATE } from 'expo-audio';
 import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
@@ -13,24 +17,23 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   useColorScheme,
   Vibration,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { calculateNextInterval, formatTime, getSoundFile, registerBackgroundTask, SOUND_OPTIONS, timeToMilliseconds, triggerNotification } from '../common/module';
+import TimeInput from '../components/TimeInput';
 import { colors, darkTheme, lightTheme, Theme } from '../constants/theme';
-import { BACKGROUND_TASK_IDENTIFIER, calculateNextInterval, formatTime, getSoundFile, registerBackgroundTask, SOUND_OPTIONS, SoundType, timeToMilliseconds, triggerNotification } from '../utils/module';
 
 // Add type for interval record
 export interface IntervalRecord {
   index: number;
   start: number; // timestamp (ms)
   duration: number; // ms
-  answer?: 'yes' | 'no' | null;
+  answer?: Answer;
 }
 
 // Configure notifications
@@ -174,7 +177,7 @@ const RecordSession = () => {
 
   // References
   const timerRef = useRef<number | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const soundRef = useRef<AudioPlayer | null>(null);
   const appState = useRef(AppState.currentState);
 
   // Load settings from AsyncStorage
@@ -268,10 +271,6 @@ const RecordSession = () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
-      // Unload sound
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
-      }
     };
   }, [handleAppStateChange, loadSettings]);
 
@@ -310,7 +309,7 @@ const RecordSession = () => {
       }
 
       if (finalStatus !== 'granted') {
-        console.log('Failed to get push token for push notification!');
+        console.warn('Failed to get push token for push notification!');
         return;
       }
     } catch (error) {
@@ -327,24 +326,26 @@ const RecordSession = () => {
       } catch (error) {
         console.error("Error playing sound on web:", error);
       }
-    } else {
-      try {
-        const { sound } = await Audio.Sound.createAsync(getSoundFile(state.selectedSound));
-        soundRef.current = sound;
-        await sound.playAsync();
-        sound.setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            sound.unloadAsync();
-            soundRef.current = null;
-          }
-        });
 
-        // Trigger vibration on iOS and Android
-        Vibration.vibrate();
-      } catch (error) {
-        console.error("Error playing sound:", error);
-      }
+      return;
     }
+
+    try {
+      const player = createAudioPlayer(getSoundFile(state.selectedSound));
+      soundRef.current = player;
+      player.play();
+
+      player.addListener(PLAYBACK_STATUS_UPDATE, (status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          soundRef.current = null;
+        }
+      });
+    } catch (error) {
+      console.error("Error playing sound:", error);
+    }
+
+    // Trigger vibration on iOS and Android
+    Vibration.vibrate();
   }, [state.selectedSound]);
 
   // Show question popup for the required duration
@@ -494,20 +495,8 @@ const RecordSession = () => {
     }
   }, [saveSettings, intervalRecords]);
 
-  // Toggle dark mode
-  const toggleDarkMode = useCallback(async () => {
-    const newMode = !state.darkMode;
-    updateState('darkMode', newMode);
-
-    try {
-      await AsyncStorage.setItem('darkMode', newMode.toString());
-    } catch (error) {
-      console.error("Error saving dark mode setting:", error);
-    }
-  }, [state.darkMode, updateState]);
-
   // Calculate time remaining until next alarm
-  const getTimeRemaining = useCallback(() => {
+  const remainingTime = useMemo(() => {
     if (!state.nextAlarm || !state.isRunning) {
       return null;
     }
@@ -545,7 +534,10 @@ const RecordSession = () => {
   const handleAnswer = useCallback((answer: 'yes' | 'no') => {
     setState(prev => ({ ...prev, showQuestion: false, currentIntervalIdx: null, questionTimeout: null }));
     setIntervalRecords(prev => {
-      if (prev.length === 0) return prev;
+      if (prev.length === 0) {
+        return prev;
+      }
+
       // Only update the last interval's answer
       const updated = [...prev];
       updated[updated.length - 1] = { ...updated[updated.length - 1], answer };
@@ -581,19 +573,19 @@ const RecordSession = () => {
             style={{ backgroundColor: colors.success, borderRadius: 32, padding: 16, marginHorizontal: 8 }}
             onPress={() => handleAnswer('yes')}
           >
-            <Text style={{ color: '#fff', fontSize: 20 }}>✔ Yes</Text>
+            <Text style={{ color: colors.white, fontSize: 20 }}>✔ Yes</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={{ backgroundColor: colors.destructive, borderRadius: 32, padding: 16, marginHorizontal: 8 }}
             onPress={() => handleAnswer('no')}
           >
-            <Text style={{ color: '#fff', fontSize: 20 }}>✘ No</Text>
+            <Text style={{ color: colors.white, fontSize: 20 }}>✘ No</Text>
           </TouchableOpacity>
         </View>
         <View style={{ width: '100%', height: 8, backgroundColor: '#eee', borderRadius: 4, overflow: 'hidden' }}>
           <Animated.View style={{
             height: 8,
-            backgroundColor: '#007AFF',
+            backgroundColor: primaryColor,
             width: questionProgress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
           }} />
         </View>
@@ -601,161 +593,149 @@ const RecordSession = () => {
     );
   };
 
+  useUnmount(async () => {
+    // Unload sound when component unmounts
+    if (soundRef.current) {
+      soundRef.current = null;
+    }
+
+    // Clear any active timers
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Clear question timeout
+    if (state.questionTimeout) {
+      clearTimeout(state.questionTimeout);
+      setState(prev => ({ ...prev, questionTimeout: null }));
+    }
+
+    // Remove keys in local storage
+    await AsyncStorage.removeItem('timerActive');
+    await AsyncStorage.removeItem('nextAlarmTime');
+  });
+
+  const backgroundColor = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const cardColor = useThemeColor({}, 'card');
+  const borderColor = useThemeColor({}, 'border');
+  const primaryColor = useThemeColor({}, 'primary');
+  const errorColor = useThemeColor({}, 'error');
+
   return (
     <SafeAreaProvider>
-      <View style={[styles.container, { backgroundColor: state.theme.background }]}>
+      <View style={[styles.container, { backgroundColor }]}>
         {renderQuestionPopup()}
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-start' }} keyboardShouldPersistTaps="handled">
           <StatusBar />
 
           <View style={styles.header}>
-            <Text style={[styles.title, { color: state.theme.text }]}>Variable Interval Timer</Text>
-            <Switch
-              value={state.darkMode}
-              onValueChange={toggleDarkMode}
-              trackColor={{ false: '#767577', true: state.theme.primary }}
-              thumbColor={state.darkMode ? state.theme.accent : '#f4f3f4'}
-            />
+            <Text style={[styles.title, { color: textColor }]}>Variable Interval Timer</Text>
           </View>
 
-          <View style={[styles.card, { backgroundColor: state.theme.card }]}>
-            <Text style={[styles.sectionTitle, { color: state.theme.text }]}>Average Duration</Text>
+          <View style={[styles.card, { backgroundColor: cardColor }]}>
+            <Text style={[styles.sectionTitle, { color: textColor }]}>Average Duration</Text>
             <View style={styles.timeInputRow}>
-              <View style={styles.timeInputContainer}>
-                <Text style={[styles.timeInputLabel, { color: state.theme.text }]}>Hours</Text>
-                <TextInput
-                  style={[styles.timeInput, { color: state.theme.text, borderColor: state.theme.border }]}
-                  value={state.avgHours}
-                  onChangeText={(hours) => onDurationChanged('avgHours', hours)}
-                  keyboardType="numeric"
-                  editable={!state.isRunning}
-                  maxLength={2}
-                  placeholder="0"
-                  placeholderTextColor={state.theme.text + '80'}
-                />
-              </View>
-              <Text style={[styles.timeSeparator, { color: state.theme.text }]}>:</Text>
-              <View style={styles.timeInputContainer}>
-                <Text style={[styles.timeInputLabel, { color: state.theme.text }]}>Minutes</Text>
-                <TextInput
-                  style={[styles.timeInput, { color: state.theme.text, borderColor: state.theme.border }]}
-                  value={state.avgMinutes}
-                  onChangeText={(minutes) => onDurationChanged('avgMinutes', minutes)}
-                  keyboardType="numeric"
-                  editable={!state.isRunning}
-                  maxLength={2}
-                  placeholder="00"
-                  placeholderTextColor={state.theme.text + '80'}
-                />
-              </View>
-              <Text style={[styles.timeSeparator, { color: state.theme.text }]}>:</Text>
-              <View style={styles.timeInputContainer}>
-                <Text style={[styles.timeInputLabel, { color: state.theme.text }]}>Seconds</Text>
-                <TextInput
-                  style={[styles.timeInput, { color: state.theme.text, borderColor: state.theme.border }]}
-                  value={state.avgSeconds}
-                  onChangeText={(seconds) => onDurationChanged('avgSeconds', seconds)}
-                  keyboardType="numeric"
-                  editable={!state.isRunning}
-                  maxLength={2}
-                  placeholder="00"
-                  placeholderTextColor={state.theme.text + '80'}
-                />
-              </View>
+              <TimeInput
+                label="Hours"
+                value={state.avgHours}
+                onChangeText={(hours) => onDurationChanged('avgHours', hours)}
+                editable={!state.isRunning}
+                placeholder="0"
+                textColor={textColor}
+                borderColor={borderColor}
+              />
+              <Text style={[styles.timeSeparator, { color: textColor }]}>:</Text>
+              <TimeInput
+                label="Minutes"
+                value={state.avgMinutes}
+                onChangeText={(minutes) => onDurationChanged('avgMinutes', minutes)}
+                editable={!state.isRunning}
+                placeholder="00"
+                textColor={textColor}
+                borderColor={borderColor}
+              />
+              <Text style={[styles.timeSeparator, { color: textColor }]}>:</Text>
+              <TimeInput
+                label="Seconds"
+                value={state.avgSeconds}
+                onChangeText={(seconds) => onDurationChanged('avgSeconds', seconds)}
+                editable={!state.isRunning}
+                placeholder="00"
+                textColor={textColor}
+                borderColor={borderColor}
+              />
             </View>
 
-            <Text style={[styles.sectionTitle, { color: state.theme.text, marginTop: 16 }]}>Minimum Duration</Text>
+            <Text style={[styles.sectionTitle, { color: textColor, marginTop: 16 }]}>Minimum Duration</Text>
             <View style={styles.timeInputRow}>
-              <View style={styles.timeInputContainer}>
-                <Text style={[styles.timeInputLabel, { color: state.theme.text }]}>Hours</Text>
-                <TextInput
-                  style={[styles.timeInput, { color: state.theme.text, borderColor: state.theme.border }]}
-                  value={state.minHours}
-                  onChangeText={(hours) => onDurationChanged('minHours', hours)}
-                  keyboardType="numeric"
-                  editable={!state.isRunning}
-                  maxLength={2}
-                  placeholder="0"
-                  placeholderTextColor={state.theme.text + '80'}
-                />
-              </View>
-              <Text style={[styles.timeSeparator, { color: state.theme.text }]}>:</Text>
-              <View style={styles.timeInputContainer}>
-                <Text style={[styles.timeInputLabel, { color: state.theme.text }]}>Minutes</Text>
-                <TextInput
-                  style={[styles.timeInput, { color: state.theme.text, borderColor: state.theme.border }]}
-                  value={state.minMinutes}
-                  onChangeText={(minutes) => onDurationChanged('minMinutes', minutes)}
-                  keyboardType="numeric"
-                  editable={!state.isRunning}
-                  maxLength={2}
-                  placeholder="00"
-                  placeholderTextColor={state.theme.text + '80'}
-                />
-              </View>
-              <Text style={[styles.timeSeparator, { color: state.theme.text }]}>:</Text>
-              <View style={styles.timeInputContainer}>
-                <Text style={[styles.timeInputLabel, { color: state.theme.text }]}>Seconds</Text>
-                <TextInput
-                  style={[styles.timeInput, { color: state.theme.text, borderColor: state.theme.border }]}
-                  value={state.minSeconds}
-                  onChangeText={(seconds) => onDurationChanged('minSeconds', seconds)}
-                  keyboardType="numeric"
-                  editable={!state.isRunning}
-                  maxLength={2}
-                  placeholder="00"
-                  placeholderTextColor={state.theme.text + '80'}
-                />
-              </View>
+              <TimeInput
+                label="Hours"
+                value={state.minHours}
+                onChangeText={(hours) => onDurationChanged('minHours', hours)}
+                editable={!state.isRunning}
+                placeholder="0"
+                textColor={textColor}
+                borderColor={borderColor}
+              />
+              <Text style={[styles.timeSeparator, { color: textColor }]}>:</Text>
+              <TimeInput
+                label="Minutes"
+                value={state.minMinutes}
+                onChangeText={(minutes) => onDurationChanged('minMinutes', minutes)}
+                editable={!state.isRunning}
+                placeholder="00"
+                textColor={textColor}
+                borderColor={borderColor}
+              />
+              <Text style={[styles.timeSeparator, { color: textColor }]}>:</Text>
+              <TimeInput
+                label="Seconds"
+                value={state.minSeconds}
+                onChangeText={(seconds) => onDurationChanged('minSeconds', seconds)}
+                editable={!state.isRunning}
+                placeholder="00"
+                textColor={textColor}
+                borderColor={borderColor}
+              />
             </View>
 
-            <Text style={[styles.sectionTitle, { color: state.theme.text, marginTop: 16 }]}>Maximum Duration</Text>
+            <Text style={[styles.sectionTitle, { color: textColor, marginTop: 16 }]}>Maximum Duration</Text>
             <View style={styles.timeInputRow}>
-              <View style={styles.timeInputContainer}>
-                <Text style={[styles.timeInputLabel, { color: state.theme.text }]}>Hours</Text>
-                <TextInput
-                  style={[styles.timeInput, { color: state.theme.text, borderColor: state.theme.border }]}
-                  value={state.maxHours}
-                  onChangeText={(hours) => onDurationChanged('maxHours', hours)}
-                  keyboardType="numeric"
-                  editable={!state.isRunning}
-                  maxLength={2}
-                  placeholder="0"
-                  placeholderTextColor={state.theme.text + '80'}
-                />
-              </View>
-              <Text style={[styles.timeSeparator, { color: state.theme.text }]}>:</Text>
-              <View style={styles.timeInputContainer}>
-                <Text style={[styles.timeInputLabel, { color: state.theme.text }]}>Minutes</Text>
-                <TextInput
-                  style={[styles.timeInput, { color: state.theme.text, borderColor: state.theme.border }]}
-                  value={state.maxMinutes}
-                  onChangeText={(minutes) => onDurationChanged('maxMinutes', minutes)}
-                  keyboardType="numeric"
-                  editable={!state.isRunning}
-                  maxLength={2}
-                  placeholder="00"
-                  placeholderTextColor={state.theme.text + '80'}
-                />
-              </View>
-              <Text style={[styles.timeSeparator, { color: state.theme.text }]}>:</Text>
-              <View style={styles.timeInputContainer}>
-                <Text style={[styles.timeInputLabel, { color: state.theme.text }]}>Seconds</Text>
-                <TextInput
-                  style={[styles.timeInput, { color: state.theme.text, borderColor: state.theme.border }]}
-                  value={state.maxSeconds}
-                  onChangeText={(seconds) => onDurationChanged('maxSeconds', seconds)}
-                  keyboardType="numeric"
-                  editable={!state.isRunning}
-                  maxLength={2}
-                  placeholder="00"
-                  placeholderTextColor={state.theme.text + '80'}
-                />
-              </View>
+              <TimeInput
+                label="Hours"
+                value={state.maxHours}
+                onChangeText={(hours) => onDurationChanged('maxHours', hours)}
+                editable={!state.isRunning}
+                placeholder="0"
+                textColor={textColor}
+                borderColor={borderColor}
+              />
+              <Text style={[styles.timeSeparator, { color: textColor }]}>:</Text>
+              <TimeInput
+                label="Minutes"
+                value={state.maxMinutes}
+                onChangeText={(minutes) => onDurationChanged('maxMinutes', minutes)}
+                editable={!state.isRunning}
+                placeholder="00"
+                textColor={textColor}
+                borderColor={borderColor}
+              />
+              <Text style={[styles.timeSeparator, { color: textColor }]}>:</Text>
+              <TimeInput
+                label="Seconds"
+                value={state.maxSeconds}
+                onChangeText={(seconds) => onDurationChanged('maxSeconds', seconds)}
+                editable={!state.isRunning}
+                placeholder="00"
+                textColor={textColor}
+                borderColor={borderColor}
+              />
             </View>
 
             {!inputsValid && !state.isRunning && (
-              <Text style={[styles.errorText, { color: state.theme.error }]}>
+              <Text style={[styles.errorText, { color: errorColor }]}>
                 Ensure Min ≤ Average ≤ Max and at least one value is greater than zero.
               </Text>
             )}
@@ -764,41 +744,41 @@ const RecordSession = () => {
           <TouchableOpacity
             style={[
               styles.button,
-              { backgroundColor: state.isRunning ? state.theme.error : state.theme.primary },
+              { backgroundColor: state.isRunning ? errorColor : primaryColor },
               !inputsValid && !state.isRunning && { opacity: 0.5 }
             ]}
             onPress={state.isRunning ? stopTimer : startTimer}
             disabled={!state.isRunning && !inputsValid}
           >
-            <Text style={styles.buttonText}>
+            <Text style={[styles.buttonText, { color: backgroundColor }]}>
               {state.isRunning ? 'Stop Timer' : 'Start Timer'}
             </Text>
           </TouchableOpacity>
 
           {state.isRunning && (
-            <View style={[styles.statusCard, { backgroundColor: state.theme.card }]}>
-              <Text style={[styles.statusText, { color: state.theme.text }]}>
+            <View style={[styles.statusCard, { backgroundColor: cardColor }]}>
+              <Text style={[styles.statusText, { color: textColor }]}>
                 Timer is running
               </Text>
               {state.nextAlarm && (
                 <>
-                  <Text style={[styles.statusLabel, { color: state.theme.text }]}>Next alert in:</Text>
-                  <Text style={[styles.timerText, { color: state.theme.primary }]}>
-                    {getTimeRemaining()}
+                  <Text style={[styles.statusLabel, { color: textColor }]}>Next alert in:</Text>
+                  <Text style={[styles.timerText, { color: primaryColor }]}>
+                    {remainingTime}
                   </Text>
                 </>
               )}
             </View>
           )}
 
-          <Text style={[styles.sectionTitle, { color: state.theme.text, marginTop: 16 }]}>Notification Sound</Text>
-          <View style={{ borderWidth: 1, borderColor: state.theme.border, borderRadius: 8 }}>
+          <Text style={[styles.sectionTitle, { color: textColor, marginTop: 16 }]}>Notification Sound</Text>
+          <View style={{ borderWidth: 1, borderColor, borderRadius: 8 }}>
             <Picker
               selectedValue={state.selectedSound}
               onValueChange={onSoundChanged}
               enabled={!state.isRunning}
-              style={{ color: state.theme.text }}
-              dropdownIconColor={state.theme.text}
+              style={{ color: textColor }}
+              dropdownIconColor={textColor}
             >
               {SOUND_OPTIONS.map(opt => (
                 <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
@@ -807,11 +787,11 @@ const RecordSession = () => {
           </View>
 
           <View style={styles.footerContainer}>
-            <Text style={[styles.footer, { color: state.theme.text }]}>
+            <Text style={[styles.footer, { color: textColor }]}>
               The timer will continue to run in the background
             </Text>
             {state.isRunning && (
-              <Text style={[styles.footerNote, { color: state.theme.text }]}>
+              <Text style={[styles.footerNote, { color: textColor }]}>
                 Your current configuration: {state.minHours || '0'}h {state.minMinutes || '0'}m {state.minSeconds || '0'}s to {state.maxHours || '0'}h {state.maxMinutes || '0'}m {state.maxSeconds || '0'}s (avg: {state.avgHours || '0'}h {state.avgMinutes || '0'}m {state.avgSeconds || '0'}s)
               </Text>
             )}

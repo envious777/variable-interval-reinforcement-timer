@@ -1,6 +1,9 @@
+import { exportCsvWeb, formatAnswerForCsv } from '@/common/module';
 import { colors } from '@/constants/theme';
-import { formatAnswer, formatTime } from '@/utils/module';
+import { useThemeColor } from '@/hooks/useThemeColor';
+import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
 import React, { useEffect, useState } from 'react';
 import { FlatList, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -14,6 +17,12 @@ interface Session {
 
 const ViewSessions = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const backgroundColor = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const primaryColor = useThemeColor({}, 'primary');
+  const cardColor = useThemeColor({}, 'card');
+  const navigation = useNavigation<any>();
 
   useEffect(() => {
     const loadSessions = async () => {
@@ -22,87 +31,101 @@ const ViewSessions = () => {
         if (sessionsRaw) {
           setSessions(JSON.parse(sessionsRaw));
         }
-      } catch (e) {
+      } catch {
         setSessions([]);
       }
     };
     loadSessions();
   }, []);
 
-  // Export sessions to CSV
-  const exportToCSV = async () => {
-    if (!sessions.length) {
+  // Sort sessions by startedAt descending (most recent first)
+  const sortedSessions = [...sessions].sort((a, b) => b.startedAt - a.startedAt);
+
+  const handleSessionPress = (session: Session) => {
+    navigation.navigate('view/:sessionId', { sessionId: session.id });
+  };
+
+  // Toggle session selection
+  const toggleSelect = (idx: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+      }
+      return next;
+    });
+  };
+
+  // Export selected sessions to CSV
+  const exportSelectedToCSV = async () => {
+    if (selected.size === 0) {
       return;
     }
 
-    // Create CSV header
     let csv = 'Session Index,Session Start,Interval Index,Interval Start,Interval Duration,Answer\n';
-    // Add session data
-    sessions.forEach((session, sessionIdx) => {
-      session.intervals.forEach((interval) => {
-        const answer = formatAnswer(interval.answer);
-        const intervalDuration = formatTime(interval.duration);
+
+    selected.forEach(idx => {
+      const session = sortedSessions[idx];
+      if (!session) {
+        return;
+      }
+
+      session.intervals.forEach(interval => {
         const sessionStart = new Date(session.startedAt).toString();
         const intervalStart = new Date(interval.start).toString();
-
-        csv += `${sessionIdx + 1},${sessionStart},${interval.index + 1},${intervalStart},${intervalDuration},${answer}\n`;
+        const intervalDuration = Math.round(interval.duration / 1000) + 's';
+        const answer = formatAnswerForCsv(interval.answer);
+        csv += `${sortedSessions.length - idx},${sessionStart},${interval.index + 1},${intervalStart},${intervalDuration},${answer}\n`;
       });
     });
 
-    // Web: Create a downloadable blob
+    const filename = `sessions_export_${Date.now()}.csv`;
     if (Platform.OS === 'web') {
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `sessions_${Date.now()}.csv`;
-      document.body.appendChild(a);
-      a.click();
-
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 100);
-
+      exportCsvWeb(csv, filename);
       return;
     }
 
-    // Native: use FileSystem and Share
     try {
-      const fileUri = FileSystem.cacheDirectory + `sessions_${Date.now()}.csv`;
+      const fileUri = FileSystem.cacheDirectory + filename;
       await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
-      await Share.share({ url: fileUri, message: 'Session Data CSV', title: 'Exported Sessions' });
+      await Share.share({ url: fileUri, message: 'Exported Sessions CSV', title: 'Exported Sessions' });
     } catch (e) {
       alert('Failed to export CSV: ' + e);
     }
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Text style={styles.title}>View Sessions</Text>
-        <TouchableOpacity onPress={exportToCSV} style={{ backgroundColor: '#007AFF', padding: 8, borderRadius: 8, marginLeft: 8 }}>
-          <Text style={{ color: colors.white, fontWeight: 'bold' }}>Export CSV</Text>
-        </TouchableOpacity>
+        <Text style={[styles.title, { color: textColor }]}>View Sessions</Text>
+        {selected.size > 0 && (
+          <TouchableOpacity onPress={exportSelectedToCSV} style={{ backgroundColor: primaryColor, padding: 8, borderRadius: 8, marginLeft: 8 }}>
+            <Text style={{ color: textColor, fontWeight: 'bold' }}>Export Selected</Text>
+          </TouchableOpacity>
+        )}
       </View>
-      {sessions.length === 0 ? (
-        <Text>No sessions recorded yet.</Text>
+      {sortedSessions.length === 0 ? (
+        <Text style={{ color: textColor }}>No sessions recorded yet.</Text>
       ) : (
         <FlatList
-          data={sessions}
+          data={sortedSessions}
           keyExtractor={item => item.id.toString()}
-          renderItem={({ item }) => (
-            <View style={styles.sessionCard}>
-              <Text style={styles.sessionTitle}>Session: {new Date(item.startedAt).toLocaleString()}</Text>
-              <Text style={styles.sessionSubtitle}>Intervals: {item.intervals.length}</Text>
-              {item.intervals.map((interval, idx) => (
-                <Text key={interval.index} style={styles.intervalText}>
-                  #{interval.index + 1}: {new Date(interval.start).toLocaleTimeString()} - {Math.round(interval.duration / 1000)}s
-                  {typeof interval.answer !== 'undefined' && (
-                    <> — <Text style={{color: interval.answer === 'yes' ? colors.success : colors.destructive}}>{interval.answer === 'yes' ? '✔' : '✘'}</Text></>
-                  )}
-                </Text>
-              ))}
+          renderItem={({ item, index }: { item: Session; index: number }) => (
+            <View style={[styles.sessionCard, { flexDirection: 'row', alignItems: 'center', backgroundColor: cardColor }]}>
+              <TouchableOpacity onPress={() => toggleSelect(index)}>
+                <MaterialIcons
+                  name={selected.has(index) ? 'check-box' : 'check-box-outline-blank'}
+                  size={24}
+                  color={selected.has(index) ? colors.success : textColor}
+                  style={{ marginRight: 12 }}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity style={{ flex: 1 }} onPress={() => handleSessionPress(item)}>
+                <Text style={[styles.sessionTitle, { color: textColor }]}>Session {sortedSessions.length - index}</Text>
+                <Text style={[styles.sessionSubtitle, { color: textColor }]}>Date: {new Date(item.startedAt).toLocaleString()}</Text>
+              </TouchableOpacity>
             </View>
           )}
         />

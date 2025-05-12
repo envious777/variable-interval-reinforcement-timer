@@ -1,7 +1,9 @@
+import { BACKGROUND_TASK_IDENTIFIER } from "@/constants/constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Audio } from 'expo-av';
+import { createAudioPlayer } from 'expo-audio';
 import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
+import { SoundOption } from "./types";
 
 // Import the sound files
 const BELL_SOUND = require('../assets/audio/bell-sound.mp3');
@@ -38,22 +40,6 @@ export const formatTime = (milliseconds: number) => {
         return `${minutes}m ${seconds}s`;
     }
 };
-
-/**
- * Function to format the answer for csv export
- * @param answer - The answer to format
- * @returns formatted answer string
- */
-export const formatAnswer = (answer: string | null | undefined) => {
-    switch (answer) {
-        case 'yes':
-            return 'Yes';
-        case 'no':
-            return 'No';
-        default:
-            return 'Oops!';
-    }
-}
 
 /**
  * Function to calculate the next random interval in milliseconds
@@ -109,15 +95,6 @@ export const calculateNextInterval = async () => {
 /**
  * Sound options for notifications
  */
-
-export type SoundType = "bell" | "chime" | "alert";
-
-export type SoundOption = {
-  label: string;
-  value: SoundType;
-  file: any; // The sound file
-}
-
 export const SOUND_OPTIONS: SoundOption[] = [
   { label: 'Bell', value: 'bell', file: BELL_SOUND },
   { label: 'Chime', value: 'chime', file: CHIME_SOUND },
@@ -150,21 +127,12 @@ export const triggerNotification = async (selectedSound: SoundType = 'bell') => 
 
   // Play the selected sound
   try {
-    const { sound } = await Audio.Sound.createAsync(
-      getSoundFile(selectedSound)
-    );
-    await sound.playAsync();
-    // Don't unload the sound right away (let it finish playing)
-    setTimeout(() => {
-      sound.unloadAsync();
-    }, 1000);
+    const player = createAudioPlayer(getSoundFile(selectedSound));
+    player.play();
   } catch (error) {
     console.error("Error playing sound:", error);
   }
 }
-
-// Define the background task for our timer
-export const BACKGROUND_TASK_IDENTIFIER = 'background-virt-task';
 
 /**
  * Function to register for background task
@@ -174,8 +142,50 @@ export const registerBackgroundTask = async () => {
     await BackgroundTask.registerTaskAsync(BACKGROUND_TASK_IDENTIFIER, {
       minimumInterval: 15, // in minutes
     });
-    console.log("Background task registered");
+    console.info("Background task registered");
   } catch (error) {
     console.error("Background task registration failed:", error);
   }
 }
+
+export const isNullOrUndefined = (value: any) => {
+  return value === null || value === undefined;
+}
+
+/**
+ * Function to format the answer for CSV export
+ * @param answer - The answer to format
+ * @returns formatted answer string
+ */
+export const formatAnswerForCsv = (answer: string | null | undefined) => {
+  switch (answer) {
+    case 'yes':
+      return 'Yes';
+    case 'no':
+      return 'No';
+    case 'missed':
+      return 'Missed';
+    default:
+      return '-';
+  }
+}
+
+/**
+ * Function to export CSV on web
+ * This is a workaround for the lack of file system access in web
+ * @param csv - The CSV string to export
+ * @param filename - The name of the file to save
+ */
+export const exportCsvWeb = (csv: string, filename: string) => {
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  };
