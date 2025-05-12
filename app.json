@@ -14,9 +14,14 @@
         "UIBackgroundModes": [
           "audio",
           "process",
+          "processing",
+          "audio",
+          "process",
           "processing"
-        ]
-      }
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.naveend1.variableintervalreinforcementtimer"
     },
     "android": {
       "adaptiveIcon": {
@@ -71,6 +76,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "01f0e3f9-55ac-40f9-9c8f-b2982bce0565"
+      }
     }
   }
 }

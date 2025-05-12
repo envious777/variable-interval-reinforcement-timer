@@ -1,6 +1,6 @@
 import { exportCsvWeb, formatAnswerForCsv, isNullOrUndefined } from '@/common/module';
+import { colors } from '@/common/theme';
 import { Answer } from '@/common/types';
-import { colors } from '@/constants/theme';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RouteProp, useRoute } from '@react-navigation/native';

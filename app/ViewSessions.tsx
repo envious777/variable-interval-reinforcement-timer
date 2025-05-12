@@ -1,5 +1,5 @@
 import { exportCsvWeb, formatAnswerForCsv } from '@/common/module';
-import { colors } from '@/constants/theme';
+import { colors } from '@/common/theme';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';

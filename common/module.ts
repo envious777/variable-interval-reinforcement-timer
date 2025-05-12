@@ -1,4 +1,4 @@
-import { BACKGROUND_TASK_IDENTIFIER } from "@/constants/constants";
+import { BACKGROUND_TASK_IDENTIFIER } from "@/common/constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAudioPlayer } from 'expo-audio';
 import * as BackgroundTask from 'expo-background-task';

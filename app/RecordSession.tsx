@@ -1,5 +1,5 @@
+import { BACKGROUND_TASK_IDENTIFIER } from '@/common/constants';
 import { Answer, SoundType } from '@/common/types';
-import { BACKGROUND_TASK_IDENTIFIER } from '@/constants/constants';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import useUnmount from '@/hooks/useUnmount';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,8 +25,8 @@ import {
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { calculateNextInterval, formatTime, getSoundFile, registerBackgroundTask, SOUND_OPTIONS, timeToMilliseconds, triggerNotification } from '../common/module';
+import { colors, darkTheme, lightTheme, Theme } from '../common/theme';
 import TimeInput from '../components/TimeInput';
-import { colors, darkTheme, lightTheme, Theme } from '../constants/theme';
 
 // Add type for interval record
 export interface IntervalRecord {

@@ -4,11 +4,13 @@ A mobile application that sets random timers between minimum and maximum duratio
 
 ## Features
 
-- Set variable interval timers based on average, minimum, and maximum durations
-- Dark mode and light mode support
-- Background operation (continues to work when the app is closed or phone is sleeping)
-- Friendly audio alerts suitable for classroom environments
-- Persistence of settings using local storage
+- Set variable interval timers with customizable average, minimum, and maximum durations
+- Visual distinction for average, minimum, and maximum values
+- Light and dark mode support
+- Runs in the background and continues timing when the app is closed or the device is sleeping
+- Friendly, school-appropriate audio alerts
+- Persistent settings using local storage
+- Session history with detailed interval breakdown and export options
 
 ## Usage
 
@@ -82,10 +84,10 @@ This app is built using:
 The app uses school-friendly alert sounds stored in the assets directory.
 
 ## TODO
-* Find and update mp3 files for sound types other than 'bell'
-* ~~Fix bug where subsequent interval durations after the first or second do not respect the min/max. Also starts occurring when the question is answered.~~
-* ~~Redo list view~~
-  * ~~Clicking on session takes you to a new page that has each interval displayed clearly and give ability to export in new page~~
-  * ~~Session view should allow bulk exporting by selecting sessions~~
-* Different colors for Average, minimum, and maximum so that it is a little clearer to use.
-* Look into improving the look and feel of the UI
+* [x] Find and update mp3 files for sound types other than 'bell'
+* [x] Fix bug where subsequent interval durations after the first or second do not respect the min/max. Also starts occurring when the question is answered.
+* [x] Redo list view
+  * [x] Clicking on session takes you to a new page that has each interval displayed clearly and give ability to export in new page
+  * [x] Session view should allow bulk exporting by selecting sessions
+* [ ] Different colors for Average, minimum, and maximum so that it is a little clearer to use.
+* [ ] Look into improving the look and feel of the UI
