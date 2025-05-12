@@ -46,6 +46,15 @@ This app is built using:
    npx expo start
    ```
 
+### Build for iOS Simulators
+
+https://docs.expo.dev/build-reference/simulators/
+
+Running the latest build:
+```
+eas build:run -p ios --latest
+```
+
 ### Production Build
 
 1. Install EAS CLI:
