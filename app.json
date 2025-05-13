@@ -1,6 +1,7 @@
 {
   "expo": {
-    "name": "variable-interval-reinforcement-timer",
+    "name": "VITimer",
+    "description": "A timer app for variable interval reinforcement training.",
     "slug": "variable-interval-reinforcement-timer",
     "version": "1.0.0",
     "orientation": "portrait",
