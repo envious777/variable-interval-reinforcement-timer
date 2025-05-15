@@ -2,10 +2,11 @@ import { exportCsvWeb, formatAnswerForCsv, isNullOrUndefined } from '@/common/mo
 import { colors } from '@/common/theme';
 import { Answer } from '@/common/types';
 import { useThemeColor } from '@/hooks/useThemeColor';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { RouteProp, useRoute } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { IntervalRecord } from './RecordSession';
 
@@ -18,15 +19,16 @@ interface Session {
 type SessionDetailRouteProp = RouteProp<any, any>;
 
 const SessionDetail = () => {
+  const navigation = useNavigation();
   const route = useRoute<SessionDetailRouteProp>();
   const { sessionId } = route.params as { sessionId: number };
-  const [session, setSession] = React.useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
   const cardColor = useThemeColor({}, 'card');
   const primaryColor = useThemeColor({}, 'primary');
 
-  React.useEffect(() => {
+  useEffect(() => {
     const loadSession = async () => {
       const sessionsRaw = await AsyncStorage.getItem('sessions');
       if (sessionsRaw) {
@@ -38,12 +40,8 @@ const SessionDetail = () => {
     loadSession();
   }, [sessionId]);
 
-  if (!session) {
-    return <View style={[styles.container, { backgroundColor }]}><Text style={{ color: textColor }}>Loading...</Text></View>;
-  }
-
   // Export intervals to CSV
-  const exportToCSV = async () => {
+  const exportToCSV = useCallback(async () => {
     if (!session) {
         return;
     }
@@ -72,7 +70,23 @@ const SessionDetail = () => {
     } catch (e) {
       alert('Failed to export CSV: ' + e);
     }
-  };
+  }, [session]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={exportToCSV}
+        >
+          <Ionicons name="download-outline" size={28} color={primaryColor} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [exportToCSV, navigation, primaryColor]);
+
+  if (!session) {
+    return <View style={[styles.container, { backgroundColor }]}><Text style={{ color: textColor }}>Loading...</Text></View>;
+  }
 
   // Save answer for an interval
   const saveAnswer = async (intervalIdx: number, answer: 'yes' | 'no' | 'missed') => {
@@ -104,12 +118,6 @@ const SessionDetail = () => {
 
   return (
     <View style={[styles.container, { backgroundColor }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Text style={[styles.title, { color: textColor }]}>Session Details</Text>
-        <TouchableOpacity onPress={exportToCSV} style={{ backgroundColor: primaryColor, padding: 8, borderRadius: 8, marginLeft: 8 }}>
-          <Text style={{ color: textColor, fontWeight: 'bold' }}>Export CSV</Text>
-        </TouchableOpacity>
-      </View>
       <Text style={[styles.sessionSubtitle, { color: textColor }]}>Date: {new Date(session.startedAt).toLocaleString()}</Text>
       <FlatList
         data={sortedIntervals}
@@ -152,7 +160,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 12,
     textAlign: 'center',
   },
   sessionSubtitle: {

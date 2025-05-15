@@ -1,11 +1,11 @@
 import { exportCsvWeb, formatAnswerForCsv } from '@/common/module';
 import { colors } from '@/common/theme';
 import { useThemeColor } from '@/hooks/useThemeColor';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { IntervalRecord } from './RecordSession';
 
@@ -59,7 +59,7 @@ const ViewSessions = () => {
   };
 
   // Export selected sessions to CSV
-  const exportSelectedToCSV = async () => {
+  const exportSelectedToCSV = useCallback(async () => {
     if (selected.size === 0) {
       return;
     }
@@ -94,18 +94,38 @@ const ViewSessions = () => {
     } catch (e) {
       alert('Failed to export CSV: ' + e);
     }
-  };
+  }, [selected, sortedSessions]);
+
+  // Delete selected sessions
+  const deleteSelectedSessions = useCallback(async () => {
+    if (selected.size === 0) {
+      return;
+    }
+
+    const toDeleteIds = Array.from(selected).map(idx => sortedSessions[idx]?.id).filter(Boolean);
+    const newSessions = sessions.filter(session => !toDeleteIds.includes(session.id));
+    setSessions(newSessions);
+    setSelected(new Set());
+    await AsyncStorage.setItem('sessions', JSON.stringify(newSessions));
+  }, [selected, sessions, sortedSessions]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () =>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={exportSelectedToCSV} disabled={selected.size === 0}>
+              <Ionicons name="download-outline" size={28} color={selected.size === 0 ? "#ccc" : primaryColor}/>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={deleteSelectedSessions} disabled={selected.size === 0}>
+              <Ionicons name="trash-outline" size={28} color={selected.size === 0 ? "#ccc" : colors.destructive} style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
+          </View>
+      ,
+    });
+  }, [deleteSelectedSessions, exportSelectedToCSV, navigation, primaryColor, selected.size]);
 
   return (
     <View style={[styles.container, { backgroundColor }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Text style={[styles.title, { color: textColor }]}>View Sessions</Text>
-        {selected.size > 0 && (
-          <TouchableOpacity onPress={exportSelectedToCSV} style={{ backgroundColor: primaryColor, padding: 8, borderRadius: 8, marginLeft: 8 }}>
-            <Text style={{ color: textColor, fontWeight: 'bold' }}>Export Selected</Text>
-          </TouchableOpacity>
-        )}
-      </View>
       {sortedSessions.length === 0 ? (
         <Text style={{ color: textColor }}>No sessions recorded yet.</Text>
       ) : (
@@ -118,7 +138,7 @@ const ViewSessions = () => {
                 <MaterialIcons
                   name={selected.has(index) ? 'check-box' : 'check-box-outline-blank'}
                   size={24}
-                  color={selected.has(index) ? colors.success : textColor}
+                  color={selected.has(index) ? primaryColor : textColor}
                   style={{ marginRight: 12 }}
                 />
               </TouchableOpacity>
@@ -143,7 +163,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 20,
     textAlign: 'center',
   },
   sessionCard: {

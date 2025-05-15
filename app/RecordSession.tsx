@@ -2,6 +2,7 @@ import { BACKGROUND_TASK_IDENTIFIER } from '@/common/constants';
 import { Answer, SoundType } from '@/common/types';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import useUnmount from '@/hooks/useUnmount';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation } from '@react-navigation/native';
@@ -25,6 +26,7 @@ import {
   View
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useIntervalContext } from '../common/IntervalContext';
 import { calculateNextInterval, formatTime, getSoundFile, registerBackgroundTask, SOUND_OPTIONS, timeToMilliseconds, triggerNotification } from '../common/module';
 import { colors, darkTheme, lightTheme, Theme } from '../common/theme';
 import TimeInput from '../components/TimeInput';
@@ -131,17 +133,25 @@ const RecordSession = () => {
   const [state, setState] = useState(DEFAULT_STATE);
   const navigation = useNavigation<any>();
 
+  const { intervals: intervalRecords, setIntervals: setIntervalRecords } = useIntervalContext();
+  const intervalIndexRef = useRef(0);
+  const intervalStartRef = useRef<number | null>(null);
+
   // Sync isRunning state to navigation params for custom back button
-  React.useEffect(() => {
+  useEffect(() => {
     if (navigation && navigation.setParams) {
-      navigation.setParams({ isRunning: state.isRunning });
+      navigation.setParams({
+        isRunning: state.isRunning
+      });
     }
   }, [state.isRunning, navigation]);
 
-  // Add interval recording state
-  const [intervalRecords, setIntervalRecords] = useState<IntervalRecord[]>([]);
-  const intervalIndexRef = useRef(0);
-  const intervalStartRef = useRef<number | null>(null);
+  // Sync intervalRecords to navigation params for edit screen
+  useEffect(() => {
+    if (navigation && navigation.setParams) {
+      navigation.setParams({ intervals: intervalRecords });
+    }
+  }, [intervalRecords, navigation]);
 
   // State for question popup
   const [questionProgress] = useState(new Animated.Value(1));
@@ -438,7 +448,7 @@ const RecordSession = () => {
       // Start next timer
       startForegroundTimer(nextInterval);
     }, interval);
-  }, [playSound, updateState, triggerQuestion]);
+  }, [playSound, updateState, triggerQuestion, setIntervalRecords]);
 
   // Start the timer
   const startTimer = useCallback(async () => {
@@ -466,7 +476,7 @@ const RecordSession = () => {
     } catch (error) {
       console.error("Error starting timer:", error);
     }
-  }, [saveSettings, startForegroundTimer]);
+  }, [saveSettings, startForegroundTimer, setIntervalRecords]);
 
   // Stop the timer
   const stopTimer = useCallback(async () => {
@@ -557,7 +567,7 @@ const RecordSession = () => {
       updated[updated.length - 1] = { ...updated[updated.length - 1], answer };
       return updated;
     });
-  }, []);
+  }, [setIntervalRecords]);
 
   // UI for question popup
   const renderQuestionPopup = () => {
@@ -640,17 +650,32 @@ const RecordSession = () => {
   const primaryColor = useThemeColor({}, 'primary');
   const errorColor = useThemeColor({}, 'error');
 
+  // Add navigation to edit current session
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => {
+            navigation.navigate('edit', {
+              intervals: intervalRecords,
+              onUpdateIntervals: (updated: IntervalRecord[]) => setIntervalRecords(updated),
+            });
+          }}
+          style={{ marginRight: 12 }}
+          disabled={intervalRecords.length === 0 || !state.isRunning}
+        >
+          <Ionicons name="list" size={28} color={intervalRecords.length === 0 || !state.isRunning ? '#ccc' : textColor} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, intervalRecords, setIntervalRecords, textColor, state.isRunning]);
+
   return (
     <SafeAreaProvider>
       <View style={[styles.container, { backgroundColor }]}>
         {renderQuestionPopup()}
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-start' }} keyboardShouldPersistTaps="handled">
           <StatusBar />
-
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: textColor }]}>Variable Interval Timer</Text>
-          </View>
-
           <View style={[styles.card, { backgroundColor: cardColor }]}>
             <Text style={[styles.sectionTitle, { color: textColor }]}>Average Duration</Text>
             <View style={styles.timeInputRow}>

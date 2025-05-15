@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { FC } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 interface TimeInputProps {
@@ -11,7 +11,7 @@ interface TimeInputProps {
   borderColor: string;
 }
 
-const TimeInput: React.FC<TimeInputProps> = ({
+const TimeInput: FC<TimeInputProps> = ({
   label,
   value,
   onChangeText,
