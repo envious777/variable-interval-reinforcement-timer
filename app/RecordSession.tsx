@@ -494,6 +494,9 @@ const RecordSession = () => {
         ...prev,
         nextAlarm: null,
         isRunning: false,
+        showQuestion: false,
+        questionTimeout: null,
+        currentIntervalIdx: null,
       }));
 
       // Save settings
@@ -664,7 +667,7 @@ const RecordSession = () => {
           style={{ marginRight: 12 }}
           disabled={intervalRecords.length === 0 || !state.isRunning}
         >
-          <Ionicons name="list" size={28} color={intervalRecords.length === 0 || !state.isRunning ? '#ccc' : textColor} />
+          <Ionicons name="list" size={28} color={intervalRecords.length === 0 || !state.isRunning ? '#ccc' : lightTheme.primary} />
         </TouchableOpacity>
       ),
     });

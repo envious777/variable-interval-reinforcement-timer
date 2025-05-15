@@ -1,22 +1,21 @@
-import { isNullOrUndefined } from "@/common/module";
 import { colors } from "@/common/theme";
 import { useThemeColor } from "@/hooks/useThemeColor";
-import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import {
     FlatList,
     StyleSheet,
     Text,
-    TouchableOpacity,
-    View,
+    View
 } from "react-native";
 import { useIntervalContext } from '../common/IntervalContext';
+import IntervalAnswerButtons from '../components/IntervalAnswerButtons';
 
 const EditCurrentSession = () => {
   const { intervals, updateIntervalAnswer } = useIntervalContext();
   const textColor = useThemeColor({}, "text");
   const cardColor = useThemeColor({}, "card");
   const primaryColor = useThemeColor({}, "primary");
+  const backgroundColor = useThemeColor({}, 'background');
 
   // Save answer for an interval using context
   const saveAnswer = (
@@ -30,7 +29,7 @@ const EditCurrentSession = () => {
   const sortedIntervals = [...intervals].sort((a, b) => a.index - b.index);
 
   return (
-    <View style={{ flex: 1, padding: 16 }}>
+    <View style={{ flex: 1, padding: 16, backgroundColor }}>
       <FlatList
         data={sortedIntervals}
         keyExtractor={(item) => item.index.toString()}
@@ -57,76 +56,12 @@ const EditCurrentSession = () => {
                 Duration: {Math.round(item.duration / 1000)}s
               </Text>
             </View>
-            {isNullOrUndefined(item.answer) ? (
-              <View
-                style={{ flexDirection: "row", marginLeft: 8, marginTop: 4 }}
-              >
-                <TouchableOpacity
-                  onPress={() => saveAnswer(item.index, "yes")}
-                  style={[
-                    styles.answerBtn,
-                    { backgroundColor: colors.success },
-                  ]}
-                >
-                  <Text style={styles.answerBtnText}>✔</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => saveAnswer(item.index, "no")}
-                  style={[
-                    styles.answerBtn,
-                    { backgroundColor: colors.destructive, marginLeft: 8 },
-                  ]}
-                >
-                  <Text style={styles.answerBtnText}>✘</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => saveAnswer(item.index, "missed")}
-                  style={[
-                    styles.answerBtn,
-                    { backgroundColor: "#FFD700", marginLeft: 8 },
-                  ]}
-                >
-                  <Text style={[styles.answerBtnText, { color: colors.black }]}>
-                    😬 (Missed it!)
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View
-                style={{ flexDirection: "row", marginLeft: 8, marginTop: 4 }}
-              >
-                <Text
-                  style={[
-                    styles.intervalText,
-                    {
-                      color:
-                        item.answer === "yes"
-                          ? colors.success
-                          : item.answer === "no"
-                          ? colors.destructive
-                          : "#FFD700",
-                      fontWeight: "bold",
-                      marginLeft: 8,
-                    },
-                  ]}
-                >
-                  Earned Token(s)?{" "}
-                  {item.answer === "yes"
-                    ? "✔"
-                    : item.answer === "no"
-                    ? "✘"
-                    : "😬"}
-                </Text>
-                <TouchableOpacity onPress={() => saveAnswer(item.index)}>
-                  <Ionicons
-                    name="bandage-outline"
-                    size={20}
-                    color={primaryColor}
-                    style={{ marginLeft: 8 }}
-                  />
-                </TouchableOpacity>
-              </View>
-            )}
+            <IntervalAnswerButtons
+              answer={item.answer ?? undefined}
+              onAnswer={ans => saveAnswer(item.index, ans)}
+              primaryColor={primaryColor}
+              allowEdit={true} // Allow editing the answer
+            />
           </View>
         )}
       />

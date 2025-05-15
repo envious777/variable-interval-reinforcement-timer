@@ -1,4 +1,4 @@
-export type Answer = 'yes' | 'no' | 'missed' | null;
+export type Answer = 'yes' | 'no' | 'missed';
 
 export type SoundType = "bell" | "chime" | "alert";
 

@@ -1,4 +1,4 @@
-import { exportCsvWeb, formatAnswerForCsv, isNullOrUndefined } from '@/common/module';
+import { exportCsvWeb, formatAnswerForCsv } from '@/common/module';
 import { colors } from '@/common/theme';
 import { Answer } from '@/common/types';
 import { useThemeColor } from '@/hooks/useThemeColor';
@@ -8,6 +8,7 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import IntervalAnswerButtons from '../components/IntervalAnswerButtons';
 import type { IntervalRecord } from './RecordSession';
 
 interface Session {
@@ -129,21 +130,18 @@ const SessionDetail = () => {
               <Text style={[styles.intervalText, { color: textColor }]}>Start: {new Date(item.start).toLocaleTimeString()}</Text>
               <Text style={[styles.intervalText, { color: textColor }]}>Duration: {Math.round(item.duration / 1000)}s</Text>
             </View>
-            {isNullOrUndefined(item.answer) ? (
-              <View style={{ flexDirection: 'row', marginLeft: 8, marginTop: 4 }}>
-                <TouchableOpacity onPress={() => saveAnswer(item.index, 'yes')} style={[styles.answerBtn, { backgroundColor: colors.success }]}>
-                  <Text style={styles.answerBtnText}>✔</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => saveAnswer(item.index, 'no')} style={[styles.answerBtn, { backgroundColor: colors.destructive, marginLeft: 8 }]}>
-                  <Text style={styles.answerBtnText}>✘</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => saveAnswer(item.index, 'missed')} style={[styles.answerBtn, { backgroundColor: '#FFD700', marginLeft: 8 }]}>
-                  <Text style={[styles.answerBtnText, { color: colors.black }]}>😬 (Missed it!)</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <Text style={[styles.intervalText, { color: item.answer === 'yes' ? colors.success : item.answer === 'no' ? colors.destructive : '#FFD700', fontWeight: 'bold', marginLeft: 8 }]}>Earned Token(s)? {item.answer === 'yes' ? '✔' : item.answer === 'no' ? '✘' : '😬 (Missed it!)'}</Text>
-            )}
+            <IntervalAnswerButtons
+              answer={item.answer ?? undefined}
+              onAnswer={ans => {
+                if (ans === undefined) {
+                  // Reset answer
+                  saveAnswer(item.index, 'missed'); // or handle as needed
+                } else {
+                  saveAnswer(item.index, ans);
+                }
+              }}
+              primaryColor={primaryColor}
+            />
           </View>
         )}
       />
