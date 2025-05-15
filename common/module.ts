@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAudioPlayer } from 'expo-audio';
 import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
-import { SoundOption } from "./types";
+import { SoundOption, SoundType } from "./types";
 
 // Import the sound files
 const BELL_SOUND = require('../assets/audio/bell-sound.mp3');

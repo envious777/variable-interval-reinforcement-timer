@@ -46,14 +46,20 @@ This app is built using:
    npx expo start
    ```
 
-### Build for iOS Simulators
+## Mobile
+
+### Development Builds
 
 https://docs.expo.dev/build-reference/simulators/
 
-Running the latest build:
-```
-eas build:run -p ios --latest
-```
+*  Running the latest build:
+   ```
+   eas build:run -p ios --latest
+   ```
+*  Generate iOS build artifacts - can be opened in Xcode to create development builds
+   ```
+   npx expo prebuild --platform ios
+   ```
 
 ### Production Build
 
@@ -73,6 +79,20 @@ eas build:run -p ios --latest
    ```
    eas build -p ios
    ```
+
+## Web Deploys
+
+1. Create web artifacts to deploy
+   ```npx expo export -p web```
+2. Verify everything works locally
+   ```npx expo serve```
+3. Deploy to staging/test
+   1. Alias a specific deploy id
+      ```eas deploy:alias --id=th8acisjl9```
+   2. Creates new deployment, aliased by "test"
+      `eas deploy --alias test`
+4. Deploy to prod
+   ```eas deploy --prod```
 
 ## Requirements
 

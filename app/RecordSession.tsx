@@ -4,6 +4,7 @@ import { useThemeColor } from '@/hooks/useThemeColor';
 import useUnmount from '@/hooks/useUnmount';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
+import { useNavigation } from '@react-navigation/native';
 import { AudioPlayer, createAudioPlayer, PLAYBACK_STATUS_UPDATE } from 'expo-audio';
 import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
@@ -128,6 +129,14 @@ const DEFAULT_STATE: State = {
 const RecordSession = () => {
   const systemColorScheme = useColorScheme();
   const [state, setState] = useState(DEFAULT_STATE);
+  const navigation = useNavigation<any>();
+
+  // Sync isRunning state to navigation params for custom back button
+  React.useEffect(() => {
+    if (navigation && navigation.setParams) {
+      navigation.setParams({ isRunning: state.isRunning });
+    }
+  }, [state.isRunning, navigation]);
 
   // Add interval recording state
   const [intervalRecords, setIntervalRecords] = useState<IntervalRecord[]>([]);
@@ -317,13 +326,18 @@ const RecordSession = () => {
     }
   };
 
+  const selectedSoundFile = useMemo(() => getSoundFile(state.selectedSound), [state.selectedSound]);
+
   // Play sound when timer triggers
   const playSound = useCallback(async () => {
     if (Platform.OS === 'web') {
       try {
-        const audio = new window.Audio(getSoundFile(state.selectedSound));
-        audio.play();
-      } catch (error) {
+        const audio = new window.Audio(selectedSoundFile);
+        await audio.play();
+      } catch (error: any) {
+        if (error && error.name === 'NotAllowedError') {
+          window.alert('Sound playback was blocked by your browser. Please tap anywhere on the page to enable sound.');
+        }
         console.error("Error playing sound on web:", error);
       }
 
@@ -331,7 +345,7 @@ const RecordSession = () => {
     }
 
     try {
-      const player = createAudioPlayer(getSoundFile(state.selectedSound));
+      const player = createAudioPlayer(selectedSoundFile);
       soundRef.current = player;
       player.play();
 
@@ -346,7 +360,7 @@ const RecordSession = () => {
 
     // Trigger vibration on iOS and Android
     Vibration.vibrate();
-  }, [state.selectedSound]);
+  }, [selectedSoundFile]);
 
   // Show question popup for the required duration
   const triggerQuestion = useCallback((intervalIdx: number, intervalDuration: number) => {
@@ -614,6 +628,9 @@ const RecordSession = () => {
     // Remove keys in local storage
     await AsyncStorage.removeItem('timerActive');
     await AsyncStorage.removeItem('nextAlarmTime');
+
+    // Cancel all scheduled notifications
+    await Notifications.cancelAllScheduledNotificationsAsync();
   });
 
   const backgroundColor = useThemeColor({}, 'background');
@@ -785,6 +802,18 @@ const RecordSession = () => {
               ))}
             </Picker>
           </View>
+
+          <TouchableOpacity
+            style={[
+              styles.button,
+              { backgroundColor: primaryColor, marginTop: 8 },
+              state.isRunning && { opacity: 0.5 }
+            ]}
+            onPress={playSound}
+            disabled={state.isRunning}
+          >
+            <Text style={[styles.buttonText, { color: backgroundColor }]}>Preview Sound</Text>
+          </TouchableOpacity>
 
           <View style={styles.footerContainer}>
             <Text style={[styles.footer, { color: textColor }]}>
