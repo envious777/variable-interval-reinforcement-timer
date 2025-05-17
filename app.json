@@ -16,7 +16,8 @@
           "audio",
           "processing"
         ],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "VITimer does not record audio, but the microphone permission is required by some underlying libraries used in the app. No audio is captured or stored. The only audio used is the notification sound played when the timer goes off."
       },
       "bundleIdentifier": "com.naveend1.variableintervalreinforcementtimer",
       "config": {
