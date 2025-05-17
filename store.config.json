@@ -1,0 +1,14 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "info": {
+      "en-US": {
+        "title": "VITimer",
+        "subtitle": "Variable Interval Timer",
+        "description": "This app, 'VITimer' (Variable Interval Timer), is designed for use with variable interval reinforcement systems, commonly applied in behavioral interventions such as BIP (Behavior Intervention Plans) and ABA (Applied Behavior Analysis). It provides a timer that triggers at randomized variable intervals, helping users implement reinforcement schedules in settings like schools or therapy. The app supports features such as background notifications, customizable interval ranges, sound/vibration alerts, and session recording for later review. It is optimized for iOS and includes notification badge management and session history.",
+        "keywords": ["variable interval timer", "vi timer", "BIP", "ABA", "vitimer", "school reinforcement"],
+        "privacyPolicyUrl": ""
+      }
+    }
+  }
+}

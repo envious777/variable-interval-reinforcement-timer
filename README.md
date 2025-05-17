@@ -48,9 +48,7 @@ This app is built using:
 
 ## Mobile
 
-### Development Builds
-
-https://docs.expo.dev/build-reference/simulators/
+### [Development Builds for iOS Simulators](https://docs.expo.dev/build-reference/simulators/)
 
 *  Running the latest build:
    ```
@@ -60,6 +58,8 @@ https://docs.expo.dev/build-reference/simulators/
    ```
    npx expo prebuild --platform ios
    ```
+
+### [Development Build](https://docs.expo.dev/develop/development-builds/create-a-build/)
 
 ### Production Build
 

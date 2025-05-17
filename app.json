@@ -22,7 +22,10 @@
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "bundleIdentifier": "com.naveend1.variableintervalreinforcementtimer"
+      "bundleIdentifier": "com.naveend1.variableintervalreinforcementtimer",
+      "config": {
+        "usesNonExemptEncryption": true
+      }
     },
     "android": {
       "adaptiveIcon": {

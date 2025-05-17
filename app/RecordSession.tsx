@@ -44,7 +44,7 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true, // Enable badge
     shouldShowBanner: true,
     shouldShowList: true,
   }),
@@ -324,6 +324,7 @@ const RecordSession = () => {
 
       if (existingStatus !== 'granted') {
         const { status } = await Notifications.requestPermissionsAsync();
+        console.info('Push notification permission status:', status);
         finalStatus = status;
       }
 
@@ -415,7 +416,7 @@ const RecordSession = () => {
   }, [state.questionTimeout]);
 
   // Start a foreground timer (when app is in foreground)
-  const startForegroundTimer = useCallback((interval: number) => {
+  const startForegroundTimer = useCallback(async (interval: number) => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
     }
@@ -429,6 +430,22 @@ const RecordSession = () => {
       { index: currentIndex, start: now, duration: interval },
     ]);
     intervalIndexRef.current += 1;
+
+    // Cancel any previous scheduled notifications
+    await Notifications.cancelAllScheduledNotificationsAsync();
+
+    // Only schedule a local notification if the app is in the background
+    if (AppState.currentState !== 'active') {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Timer Alert',
+          body: 'Your variable interval timer has triggered!',
+          sound: true,
+          badge: currentIndex + 1, // Show current interval index as badge
+        },
+        trigger: { seconds: Math.max(1, Math.floor(interval / 1000)), repeats: false } as any,
+      });
+    }
 
     timerRef.current = setTimeout(async () => {
       // Play sound and trigger notification
@@ -486,6 +503,12 @@ const RecordSession = () => {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
+
+      // Cancel all scheduled notifications
+      await Notifications.cancelAllScheduledNotificationsAsync();
+
+      // Clear the app icon badge count
+      await Notifications.setBadgeCountAsync(0);
 
       // Update timer state
       await AsyncStorage.removeItem('nextAlarmTime');
