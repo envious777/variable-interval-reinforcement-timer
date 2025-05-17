@@ -9,10 +9,13 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "autoincrement": true
+      "autoIncrement": true
     },
     "production": {
-      "autoincrement": true
+      "autoIncrement": true
     }
+  },
+  "cli": {
+    "appVersionSource": "remote"
   }
 }
