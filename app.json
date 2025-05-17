@@ -14,10 +14,6 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "audio",
-          "process",
-          "processing",
-          "audio",
-          "process",
           "processing"
         ],
         "ITSAppUsesNonExemptEncryption": false

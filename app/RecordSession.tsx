@@ -42,7 +42,6 @@ export interface IntervalRecord {
 // Configure notifications
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true, // Enable badge
     shouldShowBanner: true,
