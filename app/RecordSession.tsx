@@ -1,4 +1,3 @@
-import { BACKGROUND_TASK_IDENTIFIER } from '@/common/constants';
 import { Answer, SoundType } from '@/common/types';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import useUnmount from '@/hooks/useUnmount';
@@ -7,9 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation } from '@react-navigation/native';
 import { AudioPlayer, createAudioPlayer, PLAYBACK_STATUS_UPDATE } from 'expo-audio';
-import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
-import * as TaskManager from 'expo-task-manager';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -25,11 +22,13 @@ import {
   Vibration,
   View
 } from 'react-native';
+import BackgroundTimer from 'react-native-background-timer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useIntervalContext } from '../common/IntervalContext';
-import { calculateNextInterval, formatTime, getSoundFile, registerBackgroundTask, SOUND_OPTIONS, timeToMilliseconds, triggerNotification } from '../common/module';
+import { calculateNextInterval, formatTime, getSoundFile, registerForNotifications, SOUND_OPTIONS, timeToMilliseconds } from '../common/module';
 import { colors, darkTheme, lightTheme, Theme } from '../common/theme';
 import TimeInput from '../components/TimeInput';
+import { useTimeout } from '../hooks/useTimeout';
 
 // Add type for interval record
 export interface IntervalRecord {
@@ -49,37 +48,6 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Register the background task
-TaskManager.defineTask(BACKGROUND_TASK_IDENTIFIER, async () => {
-  try {
-    // This will be executed when the background fetch is triggered
-    // We'll use this to check if we need to trigger a notification
-    const nextAlarmTime = await AsyncStorage.getItem('nextAlarmTime');
-    const isActive = await AsyncStorage.getItem('timerActive');
-    const selectedSound = (await AsyncStorage.getItem('selectedSound') || 'bell') as SoundType;
-
-    if (isActive === 'true' && nextAlarmTime) {
-      const now = Date.now();
-      if (now >= parseInt(nextAlarmTime)) {
-        // It's time to trigger the notification
-        await triggerNotification(selectedSound);
-
-        // Calculate and set the next alarm time
-        const interval = await calculateNextInterval();
-        const newAlarmTime = now + interval;
-        await AsyncStorage.setItem('nextAlarmTime', newAlarmTime.toString());
-
-        return BackgroundTask.BackgroundTaskResult.Success;
-      }
-    }
-
-    return BackgroundTask.BackgroundTaskResult.Success;
-  } catch (error) {
-    console.error("Background task error:", error);
-    return BackgroundTask.BackgroundTaskResult.Failed;
-  }
-});
-
 type State = {
   isRunning: boolean;
   avgHours: string;
@@ -97,8 +65,6 @@ type State = {
   selectedSound: SoundType;
   // Question popup states
   showQuestion: boolean;
-  questionVisible: boolean;
-  questionTimeout: ReturnType<typeof setTimeout> | null;
   questionDuration: number;
   currentIntervalIdx: number | null;
 }
@@ -119,8 +85,6 @@ const DEFAULT_STATE: State = {
   theme: lightTheme,
   selectedSound: 'bell',
   showQuestion: false,
-  questionVisible: false,
-  questionTimeout: null,
   questionDuration: 0,
   currentIntervalIdx: null,
 }
@@ -134,7 +98,6 @@ const RecordSession = () => {
 
   const { intervals: intervalRecords, setIntervals: setIntervalRecords } = useIntervalContext();
   const intervalIndexRef = useRef(0);
-  const intervalStartRef = useRef<number | null>(null);
 
   // Sync isRunning state to navigation params for custom back button
   useEffect(() => {
@@ -154,27 +117,7 @@ const RecordSession = () => {
 
   // State for question popup
   const [questionProgress] = useState(new Animated.Value(1));
-
-  // Animation for question popup slide in/out
   const slideAnim = useRef(new Animated.Value(-150)).current; // Start above the screen
-
-  // Show/hide question popup with animation
-  useEffect(() => {
-    if (state.showQuestion) {
-      setState(prev => ({ ...prev, questionVisible: true }));
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 350,
-        useNativeDriver: true,
-      }).start();
-    } else if (state.questionVisible) {
-      Animated.timing(slideAnim, {
-        toValue: -150,
-        duration: 350,
-        useNativeDriver: true,
-      }).start(() => setState(prev => ({ ...prev, questionVisible: false })));
-    }
-  }, [state.showQuestion, slideAnim, state.questionVisible]);
 
   // Update individual state values using a helper function
   const updateState = useCallback((key: keyof typeof state, value: any) => {
@@ -194,9 +137,37 @@ const RecordSession = () => {
   }, [systemColorScheme, updateState]);
 
   // References
-  const timerRef = useRef<number | null>(null);
   const soundRef = useRef<AudioPlayer | null>(null);
   const appState = useRef(AppState.currentState);
+
+  // Cross-platform background timer helpers
+  const isIOS = Platform.OS === 'ios';
+
+  // Store interval/timer id
+  const backgroundTimerIdRef = useRef<number | null>(null);
+
+  // Start a background interval/timer
+  const startBackgroundInterval = useCallback((callback: () => void, delay: number) => {
+    if (isIOS) {
+      BackgroundTimer.start();
+      backgroundTimerIdRef.current = BackgroundTimer.setInterval(callback, delay);
+    } else {
+      backgroundTimerIdRef.current = BackgroundTimer.setTimeout(callback, delay);
+    }
+  }, [isIOS]);
+
+  // Clear the background interval/timer
+  const clearBackgroundInterval = useCallback(() => {
+    if (backgroundTimerIdRef.current !== null) {
+      if (isIOS) {
+        BackgroundTimer.clearInterval(backgroundTimerIdRef.current);
+        BackgroundTimer.stop();
+      } else {
+        BackgroundTimer.clearTimeout(backgroundTimerIdRef.current);
+      }
+      backgroundTimerIdRef.current = null;
+    }
+  }, [isIOS]);
 
   // Load settings from AsyncStorage
   const loadSettings = useCallback(async () => {
@@ -242,8 +213,6 @@ const RecordSession = () => {
         selectedSound: savedSelectedSound || DEFAULT_STATE.selectedSound,
         theme: savedDarkMode === 'true' ? darkTheme : lightTheme,
         showQuestion: DEFAULT_STATE.showQuestion,
-        questionVisible: DEFAULT_STATE.questionVisible,
-        questionTimeout: DEFAULT_STATE.questionTimeout,
         questionDuration: DEFAULT_STATE.questionDuration,
         currentIntervalIdx: DEFAULT_STATE.currentIntervalIdx,
       });
@@ -277,18 +246,13 @@ const RecordSession = () => {
   // Load saved settings on startup
   useEffect(() => {
     loadSettings();
-    registerForPushNotifications();
-    registerBackgroundTask();
+    registerForNotifications();
 
     // Listen for app state changes (foreground/background)
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
     return () => {
       subscription.remove();
-      // Clean up any active timers
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-      }
     };
   }, [handleAppStateChange, loadSettings]);
 
@@ -315,34 +279,13 @@ const RecordSession = () => {
     }
   }, [state]);
 
-  // Register for push notifications
-  const registerForPushNotifications = async () => {
-    try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        console.info('Push notification permission status:', status);
-        finalStatus = status;
-      }
-
-      if (finalStatus !== 'granted') {
-        console.warn('Failed to get push token for push notification!');
-        return;
-      }
-    } catch (error) {
-      console.error("Error registering for notifications:", error);
-    }
-  };
-
-  const selectedSoundFile = useMemo(() => getSoundFile(state.selectedSound), [state.selectedSound]);
+  const selectedSound = useMemo(() => getSoundFile(state.selectedSound), [state.selectedSound]);
 
   // Play sound when timer triggers
   const playSound = useCallback(async () => {
     if (Platform.OS === 'web') {
       try {
-        const audio = new window.Audio(selectedSoundFile);
+        const audio = new window.Audio(selectedSound.file);
         await audio.play();
       } catch (error: any) {
         if (error && error.name === 'NotAllowedError') {
@@ -355,7 +298,7 @@ const RecordSession = () => {
     }
 
     try {
-      const player = createAudioPlayer(selectedSoundFile);
+      const player = createAudioPlayer(selectedSound.file);
       soundRef.current = player;
       player.play();
 
@@ -370,7 +313,7 @@ const RecordSession = () => {
 
     // Trigger vibration on iOS and Android
     Vibration.vibrate();
-  }, [selectedSoundFile]);
+  }, [selectedSound]);
 
   // Show question popup for the required duration
   const triggerQuestion = useCallback((intervalIdx: number, intervalDuration: number) => {
@@ -385,93 +328,97 @@ const RecordSession = () => {
       questionDuration: duration,
       currentIntervalIdx: intervalIdx,
     }));
-    questionProgress.setValue(1);
-    // Animate progress bar
-    Animated.timing(questionProgress, {
-      toValue: 0,
-      duration,
-      useNativeDriver: false,
-    }).start();
+  }, []);
 
-    // Hide after duration
-    if (state.questionTimeout) {
-      clearTimeout(state.questionTimeout);
-    }
-
-    const timeout = setTimeout(() => {
-      setState(prev => ({ ...prev, showQuestion: false, currentIntervalIdx: null, questionTimeout: null }));
-    }, duration);
-
-    setState(prev => ({ ...prev, questionTimeout: timeout }));
-  }, [questionProgress, state.questionTimeout]);
-
-  // Clean up timeout on unmount
+  // Show/hide question popup and animate progress bar/slide
   useEffect(() => {
-    return () => {
-      if (state.questionTimeout) {
-        clearTimeout(state.questionTimeout);
-      }
-    };
-  }, [state.questionTimeout]);
-
-  // Start a foreground timer (when app is in foreground)
-  const startForegroundTimer = useCallback(async (interval: number) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
+    if (state.showQuestion) {
+      // Slide in
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: false,
+      }).start();
+      // Progress bar
+      questionProgress.setValue(1);
+      Animated.timing(questionProgress, {
+        toValue: 0,
+        duration: state.questionDuration,
+        useNativeDriver: false,
+      }).start();
+    } else {
+      // Slide out
+      Animated.timing(slideAnim, {
+        toValue: -150,
+        duration: 350,
+        useNativeDriver: false,
+      }).start();
     }
+  }, [state.showQuestion, state.questionDuration, questionProgress, slideAnim]);
 
-    // Record the start of this interval
-    const now = Date.now();
-    intervalStartRef.current = now;
+  // Use useTimeout to hide the question popup after the duration
+  useTimeout(
+    () => {
+      if (state.showQuestion) {
+        setState(prev => ({ ...prev, showQuestion: false, currentIntervalIdx: null }));
+      }
+    },
+    state.showQuestion ? state.questionDuration : null
+  );
+
+  // Handles the logic when a timer notification fires
+  const handleIntervalTrigger = useCallback(async (currentInterval: number) => {
+    // Get current interval index
     const currentIndex = intervalIndexRef.current;
+    const now = Date.now();
+    const nextInterval = await calculateNextInterval();
+
+    // Record the interval
     setIntervalRecords((prev) => [
       ...prev,
-      { index: currentIndex, start: now, duration: interval },
+      { index: currentIndex, start: now, duration: currentInterval },
     ]);
     intervalIndexRef.current += 1;
 
-    // Cancel any previous scheduled notifications
-    await Notifications.cancelAllScheduledNotificationsAsync();
+    // Show question popup for the previous interval's duration
+    const prevDuration = intervalRecords.length > 0 ? intervalRecords[intervalRecords.length - 1].duration : nextInterval;
+    triggerQuestion(currentIndex, prevDuration);
 
-    // Only schedule a local notification if the app is in the background
-    if (AppState.currentState !== 'active') {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Timer Alert',
-          body: 'Your variable interval timer has triggered!',
-          sound: true,
-          badge: currentIndex + 1, // Show current interval index as badge
-        },
-        trigger: { seconds: Math.max(1, Math.floor(interval / 1000)), repeats: false } as any,
-      });
-    }
+    // Show a local notification when the timer triggers
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Timer Alert',
+        body: 'Your interval is up!',
+        sound: selectedSound.fileName,
+        badge: currentIndex + 1,
+        interruptionLevel: 'critical',
+        data: { intervalIndex: currentIndex },
+      },
+      trigger: null, // triggers immediately
+    });
 
-    timerRef.current = setTimeout(async () => {
-      // Play sound and trigger notification
-      await playSound();
+    // Schedule the next timer using BackgroundTimer
+    clearBackgroundInterval();
+    startBackgroundInterval(async () => {
+      await handleIntervalTrigger(nextInterval);
+    }, nextInterval);
 
-      // Show question popup for this interval
-      triggerQuestion(currentIndex, interval);
+    // Save the next alarm time
+    const nextAlarmTime = now + nextInterval;
+    await AsyncStorage.setItem('nextAlarmTime', nextAlarmTime.toString());
+    updateState('nextAlarm', nextAlarmTime);
 
-      // Calculate next interval and start next timer
-      const nextInterval = await calculateNextInterval();
-      const nextAlarmTime = Date.now() + nextInterval;
+    // Trigger vibration on iOS and Android
+    Vibration.vibrate();
+  }, [clearBackgroundInterval, intervalRecords, selectedSound.fileName, setIntervalRecords, startBackgroundInterval, triggerQuestion, updateState]);
 
-      // Save the next alarm time
-      await AsyncStorage.setItem('nextAlarmTime', nextAlarmTime.toString());
-      updateState('nextAlarm', nextAlarmTime);
-
-      // Start next timer
-      startForegroundTimer(nextInterval);
-    }, interval);
-  }, [playSound, updateState, triggerQuestion, setIntervalRecords]);
-
-  // Start the timer
+  // Start the timer (background-timer driven)
   const startTimer = useCallback(async () => {
     try {
       // Calculate the first interval
       const interval = await calculateNextInterval();
-      const nextAlarmTime = Date.now() + interval;
+      const now = Date.now();
+      const nextAlarmTime = now + interval;
 
       // Update timer state
       await AsyncStorage.setItem('nextAlarmTime', nextAlarmTime.toString());
@@ -482,32 +429,27 @@ const RecordSession = () => {
         isRunning: true,
       }));
 
-      // Start foreground timer (for when app is open)
-      startForegroundTimer(interval);
+      // Reset records for new session
+      setIntervalRecords([]);
+
+      // Schedule the first timer using BackgroundTimer
+      clearBackgroundInterval();
+      startBackgroundInterval(async () => {
+        await handleIntervalTrigger(interval);
+      }, interval);
 
       // Save settings
       await saveSettings();
-      setIntervalRecords([]); // Reset records for new session
-      intervalIndexRef.current = 0;
     } catch (error) {
-      console.error("Error starting timer:", error);
+      console.error('Error starting timer:', error);
     }
-  }, [saveSettings, startForegroundTimer, setIntervalRecords]);
+  }, [saveSettings, setIntervalRecords, handleIntervalTrigger, clearBackgroundInterval, startBackgroundInterval]);
 
-  // Stop the timer
+  // Stop the timer (cancel timers, clear state)
   const stopTimer = useCallback(async () => {
     try {
-      // Clear foreground timer
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-
-      // Cancel all scheduled notifications
-      await Notifications.cancelAllScheduledNotificationsAsync();
-
-      // Clear the app icon badge count
-      await Notifications.setBadgeCountAsync(0);
+      // Cancel timer
+      clearBackgroundInterval();
 
       // Update timer state
       await AsyncStorage.removeItem('nextAlarmTime');
@@ -517,7 +459,6 @@ const RecordSession = () => {
         nextAlarm: null,
         isRunning: false,
         showQuestion: false,
-        questionTimeout: null,
         currentIntervalIdx: null,
       }));
 
@@ -539,10 +480,13 @@ const RecordSession = () => {
           console.error('Failed to save session:', e);
         }
       }
+
+      // Clear all notification badges
+      await Notifications.setBadgeCountAsync(0);
     } catch (error) {
-      console.error("Error stopping timer:", error);
+      console.error('Error stopping timer:', error);
     }
-  }, [saveSettings, intervalRecords]);
+  }, [saveSettings, intervalRecords, clearBackgroundInterval]);
 
   // Calculate time remaining until next alarm
   const remainingTime = useMemo(() => {
@@ -581,7 +525,7 @@ const RecordSession = () => {
 
   // Update answer for the current interval
   const handleAnswer = useCallback((answer: 'yes' | 'no') => {
-    setState(prev => ({ ...prev, showQuestion: false, currentIntervalIdx: null, questionTimeout: null }));
+    setState(prev => ({ ...prev, showQuestion: false, currentIntervalIdx: null }));
     setIntervalRecords(prev => {
       if (prev.length === 0) {
         return prev;
@@ -594,75 +538,15 @@ const RecordSession = () => {
     });
   }, [setIntervalRecords]);
 
-  // UI for question popup
-  const renderQuestionPopup = () => {
-    if (!state.questionVisible) {
-      return null;
-    }
-
-    return (
-      <Animated.View style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: '#fff',
-        zIndex: 100,
-        elevation: 10,
-        padding: 24,
-        alignItems: 'center',
-        transform: [{ translateY: slideAnim }],
-        shadowColor: '#000',
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
-      }}>
-        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>Got reinforcement or not?</Text>
-        <View style={{ flexDirection: 'row', gap: 24, marginBottom: 16 }}>
-          <TouchableOpacity
-            style={{ backgroundColor: colors.success, borderRadius: 32, padding: 16, marginHorizontal: 8 }}
-            onPress={() => handleAnswer('yes')}
-          >
-            <Text style={{ color: colors.white, fontSize: 20 }}>✔ Yes</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{ backgroundColor: colors.destructive, borderRadius: 32, padding: 16, marginHorizontal: 8 }}
-            onPress={() => handleAnswer('no')}
-          >
-            <Text style={{ color: colors.white, fontSize: 20 }}>✘ No</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={{ width: '100%', height: 8, backgroundColor: '#eee', borderRadius: 4, overflow: 'hidden' }}>
-          <Animated.View style={{
-            height: 8,
-            backgroundColor: primaryColor,
-            width: questionProgress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-          }} />
-        </View>
-      </Animated.View>
-    );
-  };
-
   useUnmount(async () => {
+    clearBackgroundInterval();
     // Unload sound when component unmounts
     if (soundRef.current) {
       soundRef.current = null;
     }
 
     // Clear any active timers
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-
-    // Clear question timeout
-    if (state.questionTimeout) {
-      clearTimeout(state.questionTimeout);
-      setState(prev => ({ ...prev, questionTimeout: null }));
-    }
-
-    // Remove keys in local storage
-    await AsyncStorage.removeItem('timerActive');
-    await AsyncStorage.removeItem('nextAlarmTime');
+    clearBackgroundInterval();
 
     // Cancel all scheduled notifications
     await Notifications.cancelAllScheduledNotificationsAsync();
@@ -674,6 +558,48 @@ const RecordSession = () => {
   const borderColor = useThemeColor({}, 'border');
   const primaryColor = useThemeColor({}, 'primary');
   const errorColor = useThemeColor({}, 'error');
+
+  // UI for question popup
+  const renderQuestionPopupContent = useMemo(() => (
+    <Animated.View style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: '#fff',
+      zIndex: 10000,
+      elevation: 10,
+      padding: 24,
+      alignItems: 'center',
+      transform: [{ translateY: slideAnim }],
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+    }}>
+      <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>Got reinforcement or not?</Text>
+      <View style={{ flexDirection: 'row', gap: 24, marginBottom: 16 }}>
+        <TouchableOpacity
+          style={{ backgroundColor: colors.success, borderRadius: 32, padding: 16, marginHorizontal: 8 }}
+          onPress={() => handleAnswer('yes')}
+        >
+          <Text style={{ color: colors.white, fontSize: 20 }}>✓ Yes</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ backgroundColor: colors.destructive, borderRadius: 32, padding: 16, marginHorizontal: 8 }}
+          onPress={() => handleAnswer('no')}
+        >
+          <Text style={{ color: colors.white, fontSize: 20 }}>X No</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={{ width: '100%', height: 8, backgroundColor: '#eee', borderRadius: 4, overflow: 'hidden' }}>
+        <Animated.View style={{
+          height: 8,
+          backgroundColor: primaryColor,
+          width: questionProgress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+        }} />
+      </View>
+    </Animated.View>
+  ), [handleAnswer, primaryColor, questionProgress, slideAnim]);
 
   // Add navigation to edit current session
   useEffect(() => {
@@ -695,10 +621,24 @@ const RecordSession = () => {
     });
   }, [navigation, intervalRecords, setIntervalRecords, textColor, state.isRunning]);
 
+  // Control when the popup is rendered for animation
+  const [renderQuestionPopup, setRenderQuestionPopup] = useState(false);
+
+  // Control when the popup is rendered for animation
+  useEffect(() => {
+    if (state.showQuestion) {
+      setRenderQuestionPopup(true);
+    } else if (renderQuestionPopup) {
+      // Wait for slide-out animation before hiding
+      const timeout = setTimeout(() => setRenderQuestionPopup(false), 350);
+      return () => clearTimeout(timeout);
+    }
+  }, [state.showQuestion, renderQuestionPopup]);
+
   return (
     <SafeAreaProvider>
       <View style={[styles.container, { backgroundColor }]}>
-        {renderQuestionPopup()}
+        {renderQuestionPopup && renderQuestionPopupContent}
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-start' }} keyboardShouldPersistTaps="handled">
           <StatusBar />
           <View style={[styles.card, { backgroundColor: cardColor }]}>
@@ -1004,9 +944,9 @@ const styles = StyleSheet.create({
   },
   footerNote: {
     fontSize: 12,
+    color: '#888',
     textAlign: 'center',
-    marginTop: 4,
-    opacity: 0.7,
+    marginTop: 8,
   },
   footerContainer: {
     marginTop: 'auto',

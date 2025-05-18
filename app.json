@@ -14,7 +14,7 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "audio",
-          "processing"
+          "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "VITimer does not record audio, but the microphone permission is required by some underlying libraries used in the app. No audio is captured or stored. The only audio used is the notification sound played when the timer goes off."
@@ -30,10 +30,6 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
-        "RECEIVE_BOOT_COMPLETED",
-        "WAKE_LOCK",
-        "VIBRATE",
-        "SCHEDULE_EXACT_ALARM",
         "RECEIVE_BOOT_COMPLETED",
         "WAKE_LOCK",
         "VIBRATE",
@@ -64,21 +60,17 @@
           "icon": "./assets/images/notification-icon.png",
           "color": "#ffffff",
           "sounds": [
-            "./assets/audio/bell-sound.mp3"
-          ]
+            "./assets/audio/bell-sound.mp3",
+            "./assets/audio/alert-sound.mp3",
+            "./assets/audio/chime-sound.mp3"
+          ],
+          "enableBackgroundRemoteNotifications": true
         }
       ],
       [
-        "expo-background-task",
-        {
-          "taskName": "background-virt-task",
-          "taskTitle": "Variable Interval Reinforcement Timer",
-          "taskDescription": "This task runs in the background to keep the timer active.",
-          "taskIcon": "./assets/images/notification-icon.png",
-          "taskColor": "#ffffff",
-          "taskPriority": "high"
-        }
-      ]
+        "./plugins/backgroundTimer/app.plugin.js",
+        "backgroundTimer"
+      ],
     ],
     "experiments": {
       "typedRoutes": true

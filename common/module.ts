@@ -1,10 +1,7 @@
-import { BACKGROUND_TASK_IDENTIFIER } from "@/common/constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createAudioPlayer } from "expo-audio";
-import * as BackgroundTask from "expo-background-task";
-import * as Notifications from "expo-notifications";
+import * as Notifications from 'expo-notifications';
 import { colors } from "./theme";
-import { SoundOption, SoundType } from "./types";
+import { SoundOption } from "./types";
 
 // Import the sound files
 const BELL_SOUND = require("../assets/audio/bell-sound.mp3");
@@ -101,9 +98,9 @@ export const calculateNextInterval = async () => {
  * Sound options for notifications
  */
 export const SOUND_OPTIONS: SoundOption[] = [
-  { label: "Bell", value: "bell", file: BELL_SOUND },
-  { label: "Chime", value: "chime", file: CHIME_SOUND },
-  { label: "Alert", value: "alert", file: ALERT_SOUND },
+  { label: "Bell", value: "bell", fileName: "bell-sound.mp3", file: BELL_SOUND },
+  { label: "Chime", value: "chime", fileName: "chime-sound.mp3", file: CHIME_SOUND },
+  { label: "Alert", value: "alert", fileName: "alert-sound.mp3", file: ALERT_SOUND },
 ];
 
 /**
@@ -113,46 +110,7 @@ export const SOUND_OPTIONS: SoundOption[] = [
  */
 export const getSoundFile = (key: string) => {
   const found = SOUND_OPTIONS.find((opt) => opt.value === key);
-  return found ? found.file : BELL_SOUND;
-};
-
-/**
- * Function to trigger notification with sound
- * @param selectedSound - The sound to play when the notification is triggered
- */
-export const triggerNotification = async (
-  selectedSound: SoundType = "bell"
-) => {
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: "Timer Alert",
-      body: "Your variable interval timer has triggered!",
-      sound: true, // Use default sound
-    },
-    trigger: null, // Trigger immediately
-  });
-
-  // Play the selected sound
-  try {
-    const player = createAudioPlayer(getSoundFile(selectedSound));
-    player.play();
-  } catch (error) {
-    console.error("Error playing sound:", error);
-  }
-};
-
-/**
- * Function to register for background task
- */
-export const registerBackgroundTask = async () => {
-  try {
-    await BackgroundTask.registerTaskAsync(BACKGROUND_TASK_IDENTIFIER, {
-      minimumInterval: 15, // in minutes
-    });
-    console.info("Background task registered");
-  } catch (error) {
-    console.error("Background task registration failed:", error);
-  }
+  return found ?? SOUND_OPTIONS[0];
 };
 
 export const isNullOrUndefined = (value: any) => {
@@ -222,3 +180,26 @@ export const getAnswerIcon = (answer: string | null | undefined): string => {
       return "";
   }
 };
+
+/**
+ * Requests permission for push notifications
+ */
+export const registerForNotifications = async () => {
+    try {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        console.info('Push notification permission status:', status);
+        finalStatus = status;
+      }
+
+      if (finalStatus !== 'granted') {
+        console.warn('Failed to get push token for push notification!');
+        return;
+      }
+    } catch (error) {
+      console.error("Error registering for notifications:", error);
+    }
+  }
